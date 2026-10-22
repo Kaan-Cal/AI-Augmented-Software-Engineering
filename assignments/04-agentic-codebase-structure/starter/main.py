@@ -57,8 +57,11 @@ def encode(n: int) -> str:
     return "".join(reversed(chars))
 
 
+from typing import Optional
+
 class ShortenRequest(BaseModel):
     url: str
+    alias: Optional[str] = None
 
 
 @app.post("/shorten")
@@ -66,11 +69,34 @@ def shorten(req: ShortenRequest):
     if not req.url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="url must start with http:// or https://")
     with closing(get_db()) as conn:
-        cur = conn.execute("INSERT INTO links (url) VALUES (?)", (req.url,))
-        row_id = cur.lastrowid
-        code = encode(row_id)
-        conn.execute("UPDATE links SET code = ? WHERE id = ?", (code, row_id))
-        conn.commit()
+        if req.alias is not None:
+            if not req.alias.strip():
+                raise HTTPException(status_code=400, detail="alias cannot be empty")
+            if req.alias in ("shorten", "docs", "redoc", "openapi.json"):
+                raise HTTPException(status_code=400, detail="reserved alias")
+            
+            existing = conn.execute("SELECT 1 FROM links WHERE code = ?", (req.alias,)).fetchone()
+            if existing:
+                raise HTTPException(status_code=409, detail="alias already exists")
+            
+            code = req.alias
+            try:
+                conn.execute("INSERT INTO links (code, url) VALUES (?, ?)", (code, req.url))
+                conn.commit()
+            except sqlite3.IntegrityError:
+                raise HTTPException(status_code=409, detail="alias already exists")
+        else:
+            cur = conn.execute("INSERT INTO links (url) VALUES (?)", (req.url,))
+            row_id = cur.lastrowid
+            code = encode(row_id)
+            while True:
+                existing = conn.execute("SELECT 1 FROM links WHERE code = ? AND id != ?", (code, row_id)).fetchone()
+                if not existing:
+                    break
+                row_id += 1
+                code = encode(row_id)
+            conn.execute("UPDATE links SET code = ? WHERE id = ?", (code, row_id))
+            conn.commit()
     return {"code": code, "short_url": f"/{code}"}
 
 
