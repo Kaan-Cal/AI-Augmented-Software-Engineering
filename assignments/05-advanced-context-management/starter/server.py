@@ -43,12 +43,21 @@ def search_countries(query: str, limit: int = 5) -> list[dict]:
     This tool is a WORKED EXAMPLE — study how it validates input, fetches the data,
     handles errors, and returns model-friendly data.
     """
-    if not query.strip():
-        return [{"error": "query must not be empty"}]
+    if not isinstance(query, str) or not query.strip():
+        return [{"error": "query must be a non-empty string"}]
+
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        return [{"error": "limit must be a positive integer"}]
+
+    limit = min(limit, 50)
+    
     try:
         countries = load_countries()
     except httpx.HTTPError as exc:
         return [{"error": f"upstream request failed: {exc}"}]
+    except (ValueError, TypeError) as exc:
+        return [{"error": f"invalid upstream data: {exc}"}]
+
 
     q = query.strip().lower()
     matches = [
@@ -69,16 +78,40 @@ def search_countries(query: str, limit: int = 5) -> list[dict]:
     return results
 
 
-# TODO: Implement a SECOND tool, get_country_details(name), returning currencies,
-# languages, borders, and the flag URL. Reuse the error-handling pattern above.
-# Useful fields on each country record:
-#   c["currencies"]  -> {"EUR": {"name": "Euro", "symbol": "€"}, ...}
-#   c["languages"]   -> {"deu": "German", ...}
-#   c["borders"]     -> ["AUT", "BEL", ...]   (cca3 codes of neighbours)
-#   c["cca3"]        -> "DEU"                  (use FLAG_URL.format(cca3=...))
-# @mcp.tool()
-# def get_country_details(name: str) -> dict:
-#     ...
+
+@mcp.tool()
+def get_country_details(name: str) -> dict:
+    """Return currencies, languages, borders, and flag URL for a country."""
+    if not isinstance(name, str) or not name.strip():
+        return {"error": "name must be a non-empty string"}
+
+    try:
+        countries = load_countries()
+    except httpx.HTTPError as exc:
+        return {"error": f"upstream request failed: {exc}"}
+    except (ValueError, TypeError) as exc:
+        return {"error": f"invalid upstream data: {exc}"}
+
+    query = name.strip().casefold()
+
+    for country in countries:
+        country_name = country.get("name") or {}
+        common = country_name.get("common", "")
+        official = country_name.get("official", "")
+
+        if query == common.casefold() or query == official.casefold():
+            cca3 = country.get("cca3")
+
+            return {
+                "name": common,
+                "currencies": country.get("currencies") or {},
+                "languages": country.get("languages") or {},
+                "borders": country.get("borders") or [],
+                "flag_url": FLAG_URL.format(cca3=cca3) if cca3 else None,
+            }
+
+    return {"error": f"country not found: {name.strip()}"}
+
 
 
 if __name__ == "__main__":
