@@ -204,3 +204,68 @@ def test_streak_date_min_boundary_no_overflow(monkeypatch):
     r = client.get(f"/habits/{hid}/streak")
     assert r.status_code == 200
     assert r.json() == {"habit_id": hid, "streak": 2}
+
+
+def test_streak_compact_iso_dates(mock_today):
+    r_habit = client.post("/habits", json={"name": "Exercise"})
+    assert r_habit.status_code == 200
+    hid = r_habit.json()["id"]
+
+    today_compact = mock_today.strftime("%Y%m%d")
+    yesterday_compact = (mock_today - timedelta(days=1)).strftime("%Y%m%d")
+
+    r1 = client.post(f"/habits/{hid}/checkin", json={"day": today_compact})
+    assert r1.status_code == 200
+    r2 = client.post(f"/habits/{hid}/checkin", json={"day": yesterday_compact})
+    assert r2.status_code == 200
+
+    r = client.get(f"/habits/{hid}/streak")
+    assert r.status_code == 200
+    assert r.json() == {"habit_id": hid, "streak": 2}
+
+
+def test_streak_mixed_date_representations(mock_today):
+    r_habit = client.post("/habits", json={"name": "Exercise"})
+    assert r_habit.status_code == 200
+    hid = r_habit.json()["id"]
+
+    today_iso = mock_today.isoformat()
+    today_compact = mock_today.strftime("%Y%m%d")
+    yesterday_iso = (mock_today - timedelta(days=1)).isoformat()
+    two_days_ago_compact = (mock_today - timedelta(days=2)).strftime("%Y%m%d")
+
+    r1 = client.post(f"/habits/{hid}/checkin", json={"day": today_compact})
+    assert r1.status_code == 200
+    r2 = client.post(f"/habits/{hid}/checkin", json={"day": today_iso})
+    assert r2.status_code == 200
+    r3 = client.post(f"/habits/{hid}/checkin", json={"day": yesterday_iso})
+    assert r3.status_code == 200
+    r4 = client.post(f"/habits/{hid}/checkin", json={"day": two_days_ago_compact})
+    assert r4.status_code == 200
+
+    r = client.get(f"/habits/{hid}/streak")
+    assert r.status_code == 200
+    assert r.json() == {"habit_id": hid, "streak": 3}
+
+
+def test_streak_malformed_stored_dates_ignored(mock_today):
+    r_habit = client.post("/habits", json={"name": "Exercise"})
+    assert r_habit.status_code == 200
+    hid = r_habit.json()["id"]
+
+    for bad_day in ["invalid-date", "", "not-a-date", "2026-99-99", "2026-02-30"]:
+        r_bad = client.post(f"/habits/{hid}/checkin", json={"day": bad_day})
+        assert r_bad.status_code == 200
+
+    r_streak_zero = client.get(f"/habits/{hid}/streak")
+    assert r_streak_zero.status_code == 200
+    assert r_streak_zero.json() == {"habit_id": hid, "streak": 0}
+
+    r_valid = client.post(
+        f"/habits/{hid}/checkin", json={"day": mock_today.isoformat()}
+    )
+    assert r_valid.status_code == 200
+
+    r_streak_one = client.get(f"/habits/{hid}/streak")
+    assert r_streak_one.status_code == 200
+    assert r_streak_one.json() == {"habit_id": hid, "streak": 1}

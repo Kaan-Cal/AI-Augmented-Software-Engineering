@@ -112,7 +112,15 @@ def get_streak(habit_id: int):
             "SELECT DISTINCT day FROM checkins WHERE habit_id = ?", (habit_id,)
         ).fetchall()
 
-    checkin_days = {r["day"] for r in rows}
+    checkin_days: set[str] = set()
+    for r in rows:
+        raw_day = r["day"]
+        try:
+            canonical_day = date.fromisoformat(raw_day.strip()).isoformat()
+            checkin_days.add(canonical_day)
+        except (ValueError, TypeError, AttributeError):
+            continue
+
     streak = 0
     current_date = get_today()
     while current_date.isoformat() in checkin_days:
