@@ -145,6 +145,29 @@ def test_checkin_invalid_date_formats(invalid_format):
 
 
 @pytest.mark.parametrize(
+    "unicode_date",
+    [
+        # Non-ASCII digits in year
+        "\uff12\uff10\uff12\uff16-09-22",  # Full-width: ２０２６-09-22
+        "\u0662\u0660\u0662\u0666-09-22",  # Arabic-Indic: ٢٠٢٦-09-22
+        "\u0968\u0966\u0968\u096c-09-22",  # Devanagari: २०२६-09-22
+        # Non-ASCII digits in month
+        "2026-\uff10\uff19-22",  # Full-width: 2026-０９-22
+        "2026-\u0660\u0669-22",  # Arabic-Indic: 2026-٠٩-22
+        # Non-ASCII digits in day
+        "2026-09-\uff12\uff12",  # Full-width: 2026-09-２２
+        "2026-09-\u0662\u0662",  # Arabic-Indic: 2026-09-٢٢
+    ],
+)
+def test_checkin_rejects_non_ascii_unicode_digits(unicode_date):
+    hid = client.post("/habits", json={"name": "Pilates"}).json()["id"]
+    r = client.post(f"/habits/{hid}/checkin", json={"day": unicode_date})
+    assert r.status_code == 422
+    errors = r.json().get("detail", [])
+    assert any("strict YYYY-MM-DD format" in err.get("msg", "") for err in errors)
+
+
+@pytest.mark.parametrize(
     "impossible_date",
     [
         "2026-13-45",

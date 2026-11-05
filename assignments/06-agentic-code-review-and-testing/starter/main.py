@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator
 
 DB_PATH = Path(__file__).parent / "habits.db"
-DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+DATE_REGEX = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 app = FastAPI(title="Habit Tracker")
 
